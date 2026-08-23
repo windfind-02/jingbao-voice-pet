@@ -75,7 +75,7 @@ window.__ModuleLoader__.load({
 		const PET_HEIGHT_MIN = 128;
 		const PET_HEIGHT_MAX = 512;
 		/** 当前版本（发布时与 index.js 的 PET_VERSION 同步 + 更新仓库 version 文件）。 */
-		const PET_VERSION = "1.6.0";
+		const PET_VERSION = "1.7.0";
 		/** 长时间无操作进入瞌睡的阈值（3 分钟）。 */
 		const SLEEPY_AFTER_MS = 3 * 60 * 1000;
 		/** 连续活跃多久开始劝休息（50 分钟）。 */
@@ -474,6 +474,49 @@ window.__ModuleLoader__.load({
 	color: transparent;
 	text-shadow: 0 1px 3px rgba(255, 255, 255, 0.35);
 }
+/* 余额并入性能监测第二行（无单独图标，直接写「当前余额」，幼圆可爱字体，字号与第一行一致） */
+.jb-monitor-bal {
+	margin-top: calc(var(--pet-h, 256px) * 0.02);
+	text-align: center;
+	font-weight: 600;
+	color: #35506e;
+	white-space: nowrap;
+	font-family: "幼圆", "YouYuan", "Microsoft YaHei", sans-serif;
+}
+.jb-monitor-amount { color: #2f5fa8; font-weight: 700; }
+/* 菜单里余额区块 */
+.jb-menu-balance-interval { display: flex; align-items: center; gap: 6px; padding: 2px 10px; font-size: 12px; color: #35506e; }
+.jb-menu-balance-interval input[type=range] { flex: 1; accent-color: #6fa8f0; }
+.jb-interval-val { min-width: 32px; text-align: right; color: #4a7fc8; font-weight: 600; }
+/* 余额数值显示框 + 手动刷新按钮 */
+.jb-amount-box {
+	margin: 2px 10px 4px;
+	padding: 7px 10px;
+	border-radius: 8px;
+	background: rgba(111, 168, 240, 0.1);
+	border: 1px solid rgba(120, 160, 220, 0.28);
+	text-align: center;
+	font-size: 15px;
+	font-weight: 700;
+	color: #2f5fa8;
+	letter-spacing: 0.5px;
+	font-family: "幼圆", "YouYuan", "Microsoft YaHei", sans-serif;
+}
+.jb-amount-box.jb-amount-error { color: #c0392b; font-size: 13px; font-weight: 600; }
+.jb-balance-refresh {
+	display: block;
+	width: calc(100% - 20px);
+	margin: 0 10px 6px;
+	padding: 7px 0;
+	border: none;
+	border-radius: 8px;
+	background: linear-gradient(135deg, #6fa8f0, #8fb6f5);
+	color: #ffffff;
+	font-size: 13px;
+	font-weight: 600;
+	cursor: pointer;
+}
+.jb-balance-refresh:hover { filter: brightness(1.06); }
 `;
 
 		// ═══════════════════════════════════════════════════════════════════
@@ -676,8 +719,17 @@ window.__ModuleLoader__.load({
 				'    <button class="jb-menu-mute" type="button" data-k="voiceMute" aria-label="静音开关">🔊</button>',
 				'    <input class="jb-menu-range" type="range" min="0" max="100" step="1" data-k="voiceVolume" value="70" aria-label="播报音量" />',
 				'  </div>',
+				'  <div class="jb-menu-title">💰 余额显示</div>',
+				'  <label class="jb-menu-item"><input type="checkbox" data-k="balanceEnabled" /> 显示余额</label>',
+				'  <div class="jb-amount-box" data-balance-amount>未查询</div>',
+				'  <div class="jb-menu-balance-interval">',
+				'    <span>刷新间隔</span>',
+				'    <input type="range" min="1" max="60" step="1" data-k="balanceInterval" value="5" />',
+				'    <span class="jb-interval-val" data-interval-val>5 分</span>',
+				'  </div>',
+				'  <button class="jb-balance-refresh" type="button" data-balance-refresh="1">点击此处刷新余额</button>',
 				'  <div class="jb-menu-item jb-menu-help" data-help="1">📖 如何与鲸宝相处</div>',
-				'  <div class="jb-menu-item jb-menu-update-check" data-update-check="1">🔄 检查更新</div>',
+				'  <div class="jb-menu-update-check jb-menu-item" data-update-check="1">🔄 检查更新</div>',
 				'  <div class="jb-menu-item jb-menu-update-do" data-update-do="1" style="display:none">⬇️ 立即更新</div>',
 				"</div>",
 				'<div class="jb-help-panel" aria-hidden="true">',
@@ -694,7 +746,10 @@ window.__ModuleLoader__.load({
 				'  </div>',
 				'  <button class="jb-help-close" type="button">知道了</button>',
 				"</div>",
-				'<div class="jb-monitor" aria-hidden="true"><span class="jb-monitor-text"></span></div>',
+				'<div class="jb-monitor" aria-hidden="true">',
+				'  <div class="jb-monitor-text"></div>',
+				'  <div class="jb-monitor-bal" style="display:none">当前余额&nbsp;&nbsp;<b class="jb-monitor-amount">--</b></div>',
+				'</div>',
 				'<button class="jb-body" type="button" aria-label="鲸宝桌宠">',
 				'  <img class="jb-img jb-static" alt="鲸宝" draggable="false" />',
 				'  <img class="jb-img jb-anim" alt="" draggable="false" aria-hidden="true" />',
@@ -715,6 +770,8 @@ window.__ModuleLoader__.load({
 			const helpPanel = root.querySelector(".jb-help-panel");
 			const monitorPanel = root.querySelector(".jb-monitor");
 			const monitorText = root.querySelector(".jb-monitor-text");
+			const monitorBal = root.querySelector(".jb-monitor-bal");
+			const monitorAmount = root.querySelector(".jb-monitor-amount");
 
 			// 预加载所有静帧 + 动图，避免切换闪白
 			Object.keys(FRAMES).forEach((k) => {
@@ -1102,7 +1159,7 @@ window.__ModuleLoader__.load({
 			// 5f. 右键菜单 + 系统监控（CPU/内存/显卡，数据来自本地 8765 监控服务）
 			//      + 语音播报开关（确认/点击/任务完成，默认全开）
 			const MONITOR_KEY = "dsh.pet.monitor.v1";
-			let monitor = { enabled: false, cpu: true, mem: true, gpu: true, voiceAll: true, voiceConfirm: true, voiceAsk: true, voicePoke: true, voiceDone: true, voiceVolume: 70, voiceMuted: false };
+			let monitor = { enabled: false, cpu: true, mem: true, gpu: true, voiceAll: true, voiceConfirm: true, voiceAsk: true, voicePoke: true, voiceDone: true, voiceVolume: 70, voiceMuted: false, balanceEnabled: false, balanceInterval: 5 };
 			let jbPausedVoice = null;  // 小喇叭🔇 暂停的语音 Audio（🔊 恢复时从暂停处继续播）
 			let jbPausedAt = 0;        // 暂停位置（秒）
 			try {
@@ -1128,6 +1185,11 @@ window.__ModuleLoader__.load({
 				if (range) range.value = String(typeof monitor.voiceVolume === "number" ? monitor.voiceVolume : 70);
 				const muteBtn = menu.querySelector("button[data-k='voiceMute']");
 				if (muteBtn) muteBtn.textContent = monitor.voiceMuted ? "🔇" : "🔊";
+				// 余额刷新间隔滑条 + 显示
+				const balRange = menu.querySelector("input[data-k='balanceInterval']");
+				if (balRange) balRange.value = String(typeof monitor.balanceInterval === "number" ? monitor.balanceInterval : 5);
+				const balVal = menu.querySelector("[data-interval-val]");
+				if (balVal) balVal.textContent = (typeof monitor.balanceInterval === "number" ? monitor.balanceInterval : 5) + " 分";
 			}
 			body.addEventListener("contextmenu", (e) => {
 				e.preventDefault();
@@ -1231,6 +1293,16 @@ window.__ModuleLoader__.load({
 				saveMonitor();
 				renderMenu();
 				startMonitor();
+				startBalance();  // 余额开关/间隔变化时响应
+			});
+			// 手动刷新余额按钮
+			menu.addEventListener("click", (e) => {
+				const refreshBtn = e.target.closest("button[data-balance-refresh]");
+				if (refreshBtn) {
+					showBubble("鲸宝正在查询余额～稍等～", 2200);
+					fetchBalance();
+					return;
+				}
 			});
 			// 子菜单 hover 展开（CSS 处理显示），这里只负责弹出方向自适应：
 			// 主菜单靠近右边缘时子菜单向左弹（否则会被屏幕截断）
@@ -1268,19 +1340,45 @@ window.__ModuleLoader__.load({
 			setTimeout(() => checkPetUpdate(false), 5000);
 			// 音量条：拖动实时生效（input 事件）——音量实时应用到语音池，正在播的立即变音量
 			menu.addEventListener("input", (e) => {
+				// 音量条
 				const range = e.target.closest("input[data-k='voiceVolume']");
-				if (!range) return;
-				monitor.voiceVolume = parseInt(range.value, 10);
-				if (isNaN(monitor.voiceVolume)) monitor.voiceVolume = 70;
-				saveMonitor();
-				jbApplyVoiceVolume(monitor);  // 实时应用到所有 Audio（含正在播的）
+				if (range) {
+					monitor.voiceVolume = parseInt(range.value, 10);
+					if (isNaN(monitor.voiceVolume)) monitor.voiceVolume = 70;
+					saveMonitor();
+					jbApplyVoiceVolume(monitor);  // 实时应用到所有 Audio（含正在播的）
+					return;
+				}
+				// 余额刷新间隔滑条（1~60 分钟）
+				const balRange = e.target.closest("input[data-k='balanceInterval']");
+				if (balRange) {
+					monitor.balanceInterval = parseInt(balRange.value, 10);
+					if (isNaN(monitor.balanceInterval)) monitor.balanceInterval = 5;
+					saveMonitor();
+					startBalance();  // 重启定时器
+					const iv = menu.querySelector("[data-interval-val]");
+					if (iv) iv.textContent = monitor.balanceInterval + " 分";
+				}
 			});
-			// 监控轮询（每 2 秒）
+			// 监控轮询 + 余额显示（余额并入性能监测第二行）
 			let statsTimer = null;
+			let balanceTimer = null;
 			function positionMonitor() {
-				// 固定显示在鲸宝下方（不再自动检测视口位置）
+				// 固定显示在鲸宝下方
 				monitorPanel.style.top = "calc(100% + 10px)";
 				monitorPanel.style.bottom = "auto";
+			}
+			/** 统一控制性能监测框显隐：性能参数 或 余额 任一有内容才显示。
+			 *  第一行（性能）为空时隐藏并去掉第二行的上间距，保证只有余额时垂直居中。 */
+			function updateMonitorDisplay() {
+				const hasPerf = monitor.enabled && monitorText.textContent.trim();
+				// 第一行显隐
+				monitorText.style.display = hasPerf ? "" : "none";
+				// 第二行上间距：第一行隐藏时归零（避免偏上不居中）
+				monitorBal.style.marginTop = hasPerf ? "" : "0";
+				const hasBal = monitor.balanceEnabled && monitorBal.style.display !== "none";
+				if (hasPerf || hasBal) { monitorPanel.style.display = "block"; positionMonitor(); }
+				else monitorPanel.style.display = "none";
 			}
 			function fetchStats() {
 				fetch("http://127.0.0.1:8765/stats")
@@ -1290,11 +1388,10 @@ window.__ModuleLoader__.load({
 						if (monitor.cpu) parts.push("CPU " + d.cpu + "%");
 						if (monitor.mem) parts.push("内存 " + d.mem + "%");
 						if (monitor.gpu && d.gpu) parts.push("GPU " + d.gpu.usage + "%");
-						monitorText.textContent = parts.join(" · ");
-						monitorPanel.style.display = parts.length ? "block" : "none";
-						if (parts.length) positionMonitor();
+						monitorText.innerHTML = parts.join("&nbsp;&nbsp;");
+						updateMonitorDisplay();
 					})
-					.catch(() => { monitorPanel.style.display = "none"; });
+					.catch(() => { monitorText.textContent = ""; updateMonitorDisplay(); });
 			}
 			function startMonitor() {
 				if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }
@@ -1302,10 +1399,56 @@ window.__ModuleLoader__.load({
 					fetchStats();
 					statsTimer = setInterval(fetchStats, 1000);
 				} else {
-					monitorPanel.style.display = "none";
+					monitorText.textContent = "";
+					updateMonitorDisplay();
 				}
 			}
 			startMonitor();
+
+			// 余额显示（DeepSeek /user/balance，前端经 index.js /balance 获取；key 存 server 端自动读本地凭证）
+			/** 更新菜单里的余额数值框。 */
+			function updateAmountBox(text, isErr) {
+				const amountBox = menu.querySelector("[data-balance-amount]");
+				if (amountBox) { amountBox.textContent = text; amountBox.classList.toggle("jb-amount-error", !!isErr); }
+			}
+			function fetchBalance() {
+				if (!monitor.balanceEnabled) { monitorBal.style.display = "none"; updateMonitorDisplay(); return; }
+				fetch("http://127.0.0.1:8765/balance")
+					.then((r) => r.json())
+					.then((d) => {
+						if (!monitor.balanceEnabled) { monitorBal.style.display = "none"; updateMonitorDisplay(); return; }
+						if (d && d.ok && d.balance_infos && d.balance_infos.length) {
+							const sum = d.balance_infos.map((b) => (b.currency === "USD" ? "$" : "¥") + b.total_balance).join(" / ");
+							monitorAmount.textContent = sum;
+							monitorBal.style.display = "block";
+							updateAmountBox(sum);
+						} else if (d && d.error === "no_key") {
+							monitorAmount.textContent = "未配置";
+							monitorBal.style.display = "block";
+							updateAmountBox("未配置 Key", true);
+						} else {
+							monitorAmount.textContent = "获取失败";
+							monitorBal.style.display = "block";
+							updateAmountBox("获取失败", true);
+						}
+						updateMonitorDisplay();
+					})
+					.catch(() => {
+						if (monitor.balanceEnabled) { monitorAmount.textContent = "服务不可用"; monitorBal.style.display = "block"; updateMonitorDisplay(); }
+					});
+			}
+			function startBalance() {
+				if (balanceTimer) { clearInterval(balanceTimer); balanceTimer = null; }
+				if (monitor.balanceEnabled) {
+					fetchBalance();
+					balanceTimer = setInterval(fetchBalance, Math.max(1, monitor.balanceInterval) * 60 * 1000);
+				} else {
+					monitorBal.style.display = "none";
+					updateAmountBox("未查询");
+					updateMonitorDisplay();
+				}
+			}
+			startBalance();
 
 			// 6. 活跃检测 → 长时间无操作进入瞌睡，恢复时醒来
 			const onActivity = () => {
@@ -1808,6 +1951,8 @@ window.__ModuleLoader__.load({
 				const dIdx = Math.floor(Math.random() * DONE_LINES.length);
 				showBubble(DONE_LINES[dIdx], 4000);
 				playVoiceIndex("done", dIdx);  // 语音与气泡同句
+				// 对话后刷新：任务完成时同步刷新余额（主人能知道这次对话花了多少）
+				if (monitor.balanceEnabled) fetchBalance();
 			}
 			// 测试钩子：模拟一次任务完成播报（主人验收用）
 			window.__jbTestDone = () => {
