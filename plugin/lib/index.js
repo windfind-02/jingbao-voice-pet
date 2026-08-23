@@ -32,7 +32,7 @@ function writeJson(file, obj) {
 // ═══════════════════════════════════════════════════════════════════
 //  半自动更新（检测 + 用户确认后替换，发布时同步 PET_VERSION）
 // ═══════════════════════════════════════════════════════════════════
-const PET_VERSION = "1.6.0";   // 当前版本（发布时与 client.js 同步 + 更新仓库 version 文件）
+const PET_VERSION = "1.7.0";   // 当前版本（发布时与 client.js 同步 + 更新仓库 version 文件）
 const REPO_OWNER = "windfind-02";
 const REPO_NAME = "jingbao-voice-pet";
 const RAW_BASE = "https://raw.githubusercontent.com/" + REPO_OWNER + "/" + REPO_NAME + "/main";
@@ -104,6 +104,44 @@ async function doUpdate() {
     await downloadFile(RAW_BASE + "/assets/" + a, path.join(dist, a));
   }
   return { ok: true };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  余额显示（DeepSeek 开放平台 /user/balance，key 存本地，server 端调）
+// ═══════════════════════════════════════════════════════════════════
+const BALANCE_KEY_FILE = path.join(PLUGIN_DIR, "balance.key");  // 用户菜单里填的 API key
+const DEEPSEEK_BALANCE_URL = "https://api.deepseek.com/user/balance";
+/** 获取 DeepSeek API key：优先菜单里配置的 balance.key，回退到 DSH 本地凭证 .dsh/.credentials.yaml 的 DEEPSEEK_API_KEY
+ * （官网 key 会隐藏无法复制，直接读 DSH 自带的凭证最省事）。 */
+function getBalanceKey() {
+  // 1. 菜单里配置的 key（balance.key）
+  try { const k = fs.readFileSync(BALANCE_KEY_FILE, "utf8").trim(); if (k) return k; } catch (e) { /* ignore */ }
+  // 2. 回退：DSH 本地凭证 ~/.dsh/.credentials.yaml 的 DEEPSEEK_API_KEY（正则解析 YAML）
+  try {
+    const cred = path.join(os.homedir(), ".dsh", ".credentials.yaml");
+    if (fs.existsSync(cred)) {
+      const txt = fs.readFileSync(cred, "utf8");
+      const m = txt.match(/^\s*DEEPSEEK_API_KEY\s*:\s*["']?([^\s"']+)/m);
+      if (m && m[1]) return m[1];
+    }
+  } catch (e) { /* ignore */ }
+  return null;
+}
+/** 调 DeepSeek 余额接口。 */
+async function fetchBalance() {
+  const key = getBalanceKey();
+  if (!key) return { ok: false, error: "no_key" };
+  const resp = await fetch(DEEPSEEK_BALANCE_URL, {
+    headers: { Authorization: "Bearer " + key, Accept: "application/json" },
+    signal: AbortSignal.timeout(12000)
+  });
+  if (!resp.ok) return { ok: false, error: "HTTP " + resp.status };
+  const data = await resp.json();
+  return {
+    ok: true,
+    is_available: !!data.is_available,
+    balance_infos: Array.isArray(data.balance_infos) ? data.balance_infos : []
+  };
 }
 
 function apply(ctx) {
@@ -182,6 +220,19 @@ function apply(ctx) {
           send(200, { ok: true, message: "更新完成，重启 dsh web 生效" });
         }).catch((e) => {
           send(500, { ok: false, message: String((e && e.message) || e) });
+        });
+      } else if (req.url === "/balance") {
+        fetchBalance().then((d) => send(200, d)).catch((e) => send(200, { ok: false, error: String((e && e.message) || e) }));
+      } else if (req.url === "/balance/configure" && req.method === "POST") {
+        let body = "";
+        req.on("data", (c) => { body += c; if (body.length > 1e6) req.destroy(); });
+        req.on("end", () => {
+          try {
+            const j = JSON.parse(body || "{}");
+            if (!j.apiKey || !String(j.apiKey).trim()) { send(400, { ok: false, error: "empty key" }); return; }
+            fs.writeFileSync(BALANCE_KEY_FILE, String(j.apiKey).trim(), "utf8");
+            send(200, { ok: true });
+          } catch (e) { send(400, { ok: false, error: String(e) }); }
         });
       } else {
         res.writeHead(404); res.end();
