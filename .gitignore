@@ -1,0 +1,5 @@
+node_modules/
+.plugin-manager/
+.DS_Store
+Thumbs.db
+*.log
