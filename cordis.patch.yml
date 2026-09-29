@@ -1,0 +1,13 @@
+# 鲸宝桌宠 · 组合包层（bundle patch）
+#
+# 当某个 profile 安装了本包（bundle 列表里包含它），这一层就会被插进该 profile
+# 的组合树里，从而挂载桌宠插件。
+#
+# 两点说明：
+# 1. 这里按**包名**引用，不是相对路径 —— 这样 Node 的模块解析才能找到已安装的代码。
+# 2. 素材（约 39 MB）放在包内 assets/，由插件自己在 DSH 本体的 webserver 上注册
+#    路由提供。**不要再往 DSH 前端 dist 里复制素材**：桌面端（Electron）的 dist
+#    打包在只读的 app.asar 里，写不进去，旧方式在桌面端必然失效。
+- insert:
+    - id: pet
+      name: '@local/dsh-pet'
