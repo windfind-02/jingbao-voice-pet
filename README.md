@@ -11,6 +11,30 @@ Powered by **MiniMax H3 image-to-video** real smooth animations (seamless first/
 
 ![鲸宝待机 / Jingbao idle](assets/pet.png)
 
+> # ⚠️ 从 1.8.0 之前的版本升级：必须卸载后重新安装
+>
+> **如果你是 1.7.0 或更早版本的用户，请不要点桌宠右键菜单里的「立即更新」** —— 会失败（`HTTP 404`）。
+>
+> **原因**：1.8.0 做了一次破坏性调整，本仓库从「`plugin/` 子目录」改成**官方组合包结构（仓库根就是包）**，素材也随之从「复制进 DSH 前端 dist」改为「放包内 `assets/`」。下载地址变了，旧版插件写死的 `/plugin/lib/client.js` 已经不存在；而且**旧版代码里也没有能提示你的逻辑**，所以只能在这里说明。
+>
+> **正确做法**：删掉旧安装，按下面的 [📦 安装](#-安装) 重新装一次 1.8.0+，之后就能正常使用自动更新了。
+>
+> **删除旧安装**（如果不确定旧版装在哪，两处都清一下）：
+> ```powershell
+> Remove-Item "$env:USERPROFILE\.dsh\profiles\node_modules\@local\dsh-pet" -Recurse -Force
+> Remove-Item "$env:USERPROFILE\.dsh\profiles\web\node_modules\@local\dsh-pet" -Recurse -Force
+> ```
+> 再从各 profile 的 `cordis.patch.yml` 里删掉 `id: pet` 那两行（如果有），然后重新安装。
+
+> ## 🆕 v1.8.0（2026-09-29）· 正式支持 DSH 桌面端
+>
+> - ✅ **桌面端（Electron）适配完成**：桌宠现在在**网页版和桌面端都能正常运行**
+> - 📦 **改为官方组合包（bundle）**：可直接用 `dsh plugin --profile web add github:...` 安装，自动注册，无需手工改配置
+> - 🔧 **安装方式变更**：素材从「复制进前端 dist」改为「放进包内 `assets/`，由插件注册 webserver 路由提供」—— 因为**桌面端的 dist 打包在只读的 `app.asar` 里**，旧方式在桌面端必然失效
+> - 🐛 **修复语音异常**：自建素材路由原先不支持 HTTP Range，导致 Chromium 播放语音时反复重连（表现为「截断并重复播放几次」），现已支持 `206 Partial Content`
+> - 🛡️ **健壮性加固**：`nvidia-smi` 不可用（或无 N 卡）时不再让整个插件初始化失败（原先会连带 8765 监控服务一起挂掉）
+> - 📌 **桌面端提示**：桌面端没有刷新快捷键（`Ctrl+R`/`F5` 都被 Electron 拦掉），改完配置请从**托盘图标右键 → 退出**后重启；临时刷新可在开发者工具 Console 里执行 `location.reload()`
+
 ---
 
 ## ⭐ 鲸宝的杀手锏（Killer Features）
@@ -81,55 +105,86 @@ Powered by **MiniMax H3 image-to-video** real smooth animations (seamless first/
 | 💬 情感陪伴 | 整点报时（每小时不同台词）、节日祝福、劝休息、深夜关怀、待机卖萌 |
 | 💤 瞌睡状态机 | 3 分钟无操作 → 打哈欠 → 头顶💤 → 歪头瞌睡循环 → 鼠标一动醒来迎接 |
 
-### 📦 安装（两种方式）
+### 📦 安装
 
-#### 方式一：一键安装脚本
-以管理员身份运行 PowerShell，执行：
+> ⚠️ **v1.8.0 起有两处重要变化**
+>
+> **① 本包现在是标准 DSH 组合包（bundle）** —— 仓库根就是包本身（`package.json` 里声明了 `dsh.bundle`，并带 `cordis.patch.yml`）。所以可以直接用官方 CLI 安装，它会自动把本包加进目标 profile 的 bundles 列表并挂载插件，**不需要手工复制目录、建 junction、改配置文件**。
+>
+> **② 素材（动画 / 语音）不再复制进 DSH 前端 `dist`**，而是放在包内 `assets/`，由插件在 DSH 本体的 webserver 上注册路由提供。**原因**：桌面端（Electron）的 dist 打包在只读的 `app.asar` 里，根本写不进去，旧方式在桌面端必然失效。新方式**网页版与桌面端通用**，而且 `client.js` 一个字都不用动。
+
+#### ✅ 方式一：官方 CLI（推荐）
+
+```sh
+# 网页版
+dsh plugin --profile web add github:windfind-02/jingbao-voice-pet
+
+# 桌面端（用桌面端自带 CLI；桌面端 profile 由 Electron 独占管理，必须走它自己的命令）
+& 'C:\...\DeepSeek harness桌面端\resources\runtime\cli\bin\dsh.cmd' `
+    plugin --profile desktop add github:windfind-02/jingbao-voice-pet
+```
+
+> 📌 注意参数顺序是 **`dsh plugin --profile <名字> <pnpm 参数>`** —— `--profile` 放在 `plugin` **后面**，写成 `dsh --profile web plugin add ...` 会报 `too many arguments`。
+>
+> 本机已克隆/解压时，也可以直接把目录路径传给它：`dsh plugin --profile web add "E:\path\to\jingbao-voice-pet"`。
+
+安装后重启对应宿主即可生效（网页版重启 `dsh web` 并按 Ctrl+F5；桌面端从托盘退出后重新打开）。
+
+#### 方式二：一键安装脚本（不依赖 pnpm 的兜底方式）
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\install.ps1
 ```
 
-脚本会自动完成插件复制、素材（含语音）部署、配置注册，并按提示重启 dsh web。
+脚本会：复制插件到 `profiles\node_modules\@local\dsh-pet` → 把素材放进插件自带 `assets\` → 为**每个已存在的 profile（`web` / `desktop` 等）**建立 `@local` 解析并往其 `cordis.patch.yml` 注册插件。
 
-#### 方式二：手动安装
+> 不需要管理员权限（用的是 junction，普通用户即可）。
 
-**1. 复制插件**
+#### 方式三：完全手动
 
-把 `plugin` 目录复制为：
+**1. 复制包**到共享插件目录：
 ```
 C:\Users\<你的用户名>\.dsh\profiles\node_modules\@local\dsh-pet\
 ```
+（把本仓库的 `package.json`、`lib\`、`assets\`、`cordis.patch.yml` 一起放进去）
 
-**2. 部署素材**
+**2. 让 profile 能解析 `@local`**（`web` 和 `desktop` 各建一次 junction）：
 
-把 `assets` 目录里的 `pet_*.webp` / `pet_*.png` / `voice_*.mp3` 复制到 DSH 前端静态目录：
+```powershell
+foreach ($p in @("web", "desktop")) {   # 按你实际用到的 profile 填
+  $link = "$env:USERPROFILE\.dsh\profiles\$p\node_modules\@local"
+  if (-not (Test-Path $link)) {
+    New-Item -ItemType Directory -Force (Split-Path $link) | Out-Null
+    New-Item -ItemType Junction -Path $link -Target "$env:USERPROFILE\.dsh\profiles\node_modules\@local"
+  }
+}
 ```
-C:\Users\<你的用户名>\AppData\Roaming\npm\node_modules\@deepseek-ai\dsh\node_modules\@deepseek-ai\dsh-web-frontend\dist\
-```
 
-**3. 注册插件**
-
-编辑 `C:\Users\<你的用户名>\.dsh\profiles\web\cordis.patch.yml`，追加：
+**3. 注册插件**：编辑该 profile 的 `cordis.patch.yml`（例如 `...\.dsh\profiles\web\cordis.patch.yml` 和 `...\profiles\desktop\cordis.patch.yml`），追加：
 
 ```yaml
-# 鲸宝桌宠
+# 🐳 鲸宝桌宠（素材由插件自己注册路由提供，见 assets/）
 - insert:
     - id: pet
       name: '@local/dsh-pet'
 ```
 
-**4. 重启生效**
+**4. 重启生效**：
 
-```powershell
-$conn = Get-NetTCPConnection -LocalPort 3080 -State Listen -ErrorAction SilentlyContinue
-if ($conn) { Stop-Process -Id $conn.OwningProcess -Force; Start-Sleep -Seconds 2 }
-Set-Location "C:\Users\<你的用户名>\AppData\Roaming\npm\node_modules\@deepseek-ai\dsh"
-dsh web
+- **网页版**：重启 `dsh web`，浏览器按 **Ctrl+F5** 强刷
+- **桌面端**：**托盘图标右键 → 退出**，再重新打开
+
+> ⚠️ 桌面端**没有刷新快捷键**，`Ctrl+R` / `F5` 都会被 Electron 拦掉（社区插件 [dsh-niao-quick-open](https://github.com/dsh-niao/dsh-niao-quick-open) 甚至专门做了「硬性重启」功能来补这个缺口）。想不重启就刷新，可以按 `Ctrl+Shift+I` 打开开发者工具，在 Console 里执行 `location.reload()`。
+
+<!-- 下面是旧版说明，保留备查
+**2. 部署素材（放进插件自己的 assets，不再是 dist）**
+
+把发布包 `assets\` 里的**全部文件**复制到：
 ```
-
-然后浏览器打开 `http://127.0.0.1:3080` 按 **Ctrl+F5** 强刷。
+C:\Users\<你的用户名>\.dsh\profiles\node_modules\@local\dsh-pet\assets\
+```
+-->
 
 ### 📊 性能监测
 
